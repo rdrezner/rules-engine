@@ -1,58 +1,74 @@
-/*
- * This is the hello-world example from the README.
- *
- * Usage:
- *   node ./examples/01-hello-world.js
- *
- * For detailed output:
- *   DEBUG=json-rules-engine node ./examples/01-hello-world.js
- */
+import { Engine, RuleProperties } from "json-rules-engine";
 
-import { Engine } from 'json-rules-engine'
+async function start() {
+  const engine = new Engine();
 
-async function start () {
-  /**
-   * Setup a new engine
-   */
-  const engine = new Engine()
+  engine.addOperator<string, string>("containsText", (factValue, jsonValue) => {
+    if (!factValue.length) return false;
+    return factValue.includes(jsonValue);
+  });
 
-  /**
-   * Create a rule
-   */
-  engine.addRule({
-    // define the 'conditions' for when "hello world" should display
+  // rules configured in the rule builder
+  const rule: RuleProperties = {
     conditions: {
-      all: [{
-        fact: 'displayMessage',
-        operator: 'equal',
-        value: true
-      }]
+      all: [
+        {
+          fact: "field-fact",
+          operator: "containsText",
+          value: "formstack.com",
+          params: {
+            fieldId: 1234,
+          },
+        },
+        {
+          fact: "field-fact",
+          operator: "equal",
+          value: "other",
+          params: {
+            fieldId: 12345,
+          },
+        },
+      ],
     },
-    // define the 'event' that will fire when the condition evaluates truthy
     event: {
-      type: 'message',
+      type: "message",
       params: {
-        data: 'hello-world!'
-      }
-    }
-  })
+        data: "match",
+      },
+    },
+  };
 
-  /**
-   * Define a 'displayMessage' as a constant value
-   * Fact values do NOT need to be known at engine runtime; see the
-   * 03-dynamic-facts.js example for how to pull in data asynchronously during runtime
-   */
-  const facts = { displayMessage: true }
+  engine.addRule(rule);
 
-  // engine.run() evaluates the rule using the facts provided
-  const { events } = await engine.run(facts)
+  type Submission = {
+    id: number;
+    fields: { id: number; value: string }[];
+  };
 
-  events.map(event => console.log(event.params.data))
+  // Fact functions have to be defined in BE
+  engine.addFact("field-fact", (params, almanac) =>
+    almanac
+      .factValue<Submission["fields"]>("fields")
+      .then(
+        (fields) => fields.find((field) => field.id === params.fieldId)?.value
+      )
+  );
+
+  // Simplified submission data
+  const submission: Submission = {
+    id: 1234,
+    fields: [
+      {
+        id: 1234,
+        value: "rafal.drezner@formstack.com",
+      },
+      { id: 12345, value: "other" },
+    ],
+  };
+
+  const { results } = await engine.run(submission);
+
+  console.log(results[0]?.result ?? "false");
 }
 
-start()
-/*
- * OUTPUT:
- *
- * hello-world!
- */
+start();
