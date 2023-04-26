@@ -3,37 +3,54 @@ import { Engine, RuleProperties } from "json-rules-engine";
 async function start() {
   const engine = new Engine();
 
-  engine.addOperator<string, string>("containsText", (factValue, jsonValue) => {
-    if (!factValue.length) return false;
-    return factValue.includes(jsonValue);
-  });
+  engine.addOperator<string, string>("containsText", (factValue, givenValue) =>
+    factValue?.includes(givenValue)
+  );
+
+  engine.addOperator<string, string>(
+    "dateCompare",
+    (factValue, givenValue) => Date.parse(factValue) === Date.parse(givenValue)
+  );
 
   // rules configured in the rule builder
   const rule: RuleProperties = {
     conditions: {
-      all: [
+      any: [
         {
-          fact: "field-fact",
-          operator: "containsText",
-          value: "formstack.com",
-          params: {
-            fieldId: 1234,
-          },
+          all: [
+            {
+              fact: "field-value-fact",
+              operator: "containsText",
+              value: "formstack.com",
+              params: {
+                fieldId: 11,
+              },
+            },
+            {
+              fact: "field-value-fact",
+              operator: "dateCompare",
+              value: "10 Nov 1984",
+              params: {
+                fieldId: 22,
+              },
+            },
+          ],
         },
         {
-          fact: "field-fact",
+          fact: "field-value-fact",
           operator: "equal",
-          value: "other",
+          value: true,
           params: {
-            fieldId: 12345,
+            fieldId: 33,
           },
         },
       ],
     },
     event: {
-      type: "message",
+      type: "result",
       params: {
-        data: "match",
+        then: "continue",
+        else: "stop",
       },
     },
   };
@@ -42,11 +59,11 @@ async function start() {
 
   type Submission = {
     id: number;
-    fields: { id: number; value: string }[];
+    fields: { id: number; name: string; value: string | boolean }[];
   };
 
   // Fact functions have to be defined in BE
-  engine.addFact("field-fact", (params, almanac) =>
+  engine.addFact("field-value-fact", (params, almanac) =>
     almanac
       .factValue<Submission["fields"]>("fields")
       .then(
@@ -54,21 +71,29 @@ async function start() {
       )
   );
 
-  // Simplified submission data
+  // Simplified submission data from db
   const submission: Submission = {
     id: 1234,
     fields: [
       {
-        id: 1234,
+        id: 11,
+        name: "Email",
         value: "rafal.drezner@formstack.com",
       },
-      { id: 12345, value: "other" },
+      { id: 22, name: "Todays Date", value: "11/10/1984" },
+      { id: 33, name: "Works in Marketing", value: false },
     ],
   };
 
-  const { results } = await engine.run(submission);
+  engine
+    .on("success", (event, almanac) => {
+      console.log(event.params.then);
+    })
+    .on("failure", (event) => {
+      console.log(event.params.else);
+    });
 
-  console.log(results[0]?.result ?? "false");
+  await engine.run(submission);
 }
 
 start();
